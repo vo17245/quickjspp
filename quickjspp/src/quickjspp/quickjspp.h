@@ -1,9 +1,25 @@
+#pragma once
 #include "quickjs.h"
 #include <cassert>
 #include <optional>
 #include <string>
+#include <memory>
+#include <thread>
+#include <vector>
+#include <quickjs-libc.h>
+#ifdef CONFIG_DEBUGGER
+#ifndef QUICKJSPP_ENABLE_DEBUGGER
+#define QUICKJSPP_ENABLE_DEBUGGER
+#endif 
+#endif 
 namespace qjs
 {
+struct DebuggerServerHandle
+{
+    void* handle=nullptr;//qjs::detail::DebuggerServer*
+    ~DebuggerServerHandle();
+    void Destroy();
+};
 class Context;
 class Value
 {
@@ -39,7 +55,7 @@ public:
         if (m_Context && m_Value != JS_UNDEFINED)
             JS_FreeValue(m_Context, m_Value);
     }
-    template<typename T>
+    template <typename T>
     T Convert() const
     {
         static_assert(sizeof(T) == 0, "Convert function not implemented for this type");
@@ -53,15 +69,15 @@ public:
     {
         JS_SetPropertyStr(m_Context, m_Value, name, value.Unwrap());
     }
-    JSValue Unwrap() 
+    JSValue Unwrap()
     {
-        auto res=m_Value;
+        auto res = m_Value;
         m_Value = JS_UNDEFINED; // Prevent double free
         return res;
-
     }
+
 private:
-    JSValue m_Value= JS_UNDEFINED;
+    JSValue m_Value = JS_UNDEFINED;
     JSContext* m_Context = nullptr;
 };
 class Runtime
@@ -73,6 +89,8 @@ public:
         rt.m_Runtime = JS_NewRuntime();
         if (!rt.m_Runtime)
             return std::nullopt;
+        js_std_init_handlers(rt.GetRaw());
+
         return rt;
     }
     Runtime(const Runtime&) = delete;
@@ -96,7 +114,11 @@ public:
     ~Runtime()
     {
         if (m_Runtime)
+        {
+            js_std_free_handlers(m_Runtime);
             JS_FreeRuntime(m_Runtime);
+        }
+            
     }
     JSRuntime* GetRaw() const
     {
@@ -116,6 +138,12 @@ public:
         ctx.m_Context = JS_NewContext(runtime.GetRaw());
         if (!ctx.m_Context)
             return std::nullopt;
+js_init_module_std(ctx.m_Context, "std");
+js_init_module_os(ctx.m_Context, "os");
+js_std_add_helpers(ctx.m_Context, 0, nullptr);
+
+
+
         return ctx;
     }
     Context(const Context&) = delete;
@@ -145,7 +173,7 @@ public:
     {
         return m_Context;
     }
-    Value Eval(const char* code,size_t length,const char* filename, int eval_flags = JS_EVAL_TYPE_GLOBAL)
+    Value Eval(const char* code, size_t length, const char* filename, int eval_flags = JS_EVAL_TYPE_GLOBAL)
     {
         JSValue result = JS_Eval(m_Context, code, length, filename, eval_flags);
         return Value(result, m_Context);
@@ -160,53 +188,59 @@ public:
         JSValue function = JS_NewCFunction(m_Context, func, name, length);
         return Value(function, m_Context);
     }
-    void SetDebuggerMode(int mode)
+#ifdef QUICKJSPP_ENABLE_DEBUGGER
+struct BreakPoint
     {
-        #ifdef CONFIG_DEBUGGER
-        JS_SetDebuggerMode(m_Context, mode);
-        #endif
+        std::string filename;
+        uint32_t line;
+    };
+void SetDebuggerMode(int mode);
+    DebuggerServerHandle& GetDebuggerServer()
+    {
+        return m_Server;
     }
-    
-    
+    std::vector<BreakPoint>& GetBreakPoints()
+    {
+        return m_BreakPoints;
+    }
+#endif 
 private:
     Context() = default;
     JSContext* m_Context;
-};
-template<>
-    inline int32_t Value::Convert<int32_t>()const
-    {
-        //if (JS_IsException(value))
-        //    return 0; // or throw an exception
-        return JS_VALUE_GET_INT(m_Value);
-    }
-    template<>
-    inline double Value::Convert<double>()const
-    {
-        //if (JS_IsException(value))
-        //    return 0.0; // or throw an exception
-        double result;
-        if (JS_ToFloat64(m_Context, &result, m_Value) < 0)
-            return 0.0; // or throw an exception
-        return result;
-    }
-    template<>
-    inline std::string Value::Convert<std::string>()const
-    {
-        //if (JS_IsException(value))
-        //    return ""; // or throw an exception
-        const char* str = JS_ToCString(m_Context, m_Value);
-        if (!str)
-            return ""; // or throw an exception
-        std::string result(str);
-        JS_FreeCString(m_Context, str);
-        return result;
-    }
-} // namespace qjs
-
-
-
-
-
-
-
+#ifdef QUICKJSPP_ENABLE_DEBUGGER
+    DebuggerServerHandle m_Server{nullptr};
+    std::unique_ptr<std::thread>  m_ServerThread;
     
+    std::vector<BreakPoint> m_BreakPoints; // 存储断点信息
+#endif
+};
+template <>
+inline int32_t Value::Convert<int32_t>() const
+{
+    // if (JS_IsException(value))
+    //     return 0; // or throw an exception
+    return JS_VALUE_GET_INT(m_Value);
+}
+template <>
+inline double Value::Convert<double>() const
+{
+    // if (JS_IsException(value))
+    //     return 0.0; // or throw an exception
+    double result;
+    if (JS_ToFloat64(m_Context, &result, m_Value) < 0)
+        return 0.0; // or throw an exception
+    return result;
+}
+template <>
+inline std::string Value::Convert<std::string>() const
+{
+    // if (JS_IsException(value))
+    //     return ""; // or throw an exception
+    const char* str = JS_ToCString(m_Context, m_Value);
+    if (!str)
+        return ""; // or throw an exception
+    std::string result(str);
+    JS_FreeCString(m_Context, str);
+    return result;
+}
+} // namespace qjs

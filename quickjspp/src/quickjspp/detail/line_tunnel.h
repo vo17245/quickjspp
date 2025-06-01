@@ -1,13 +1,15 @@
 #pragma once
 #include <functional>
 #include <string_view>
+#include <string>
 namespace qjs::detail
 {
     struct LineTunnel
     {
         std::function<bool(uint8_t&)> readByte;
         std::function<bool(const uint8_t*, size_t)> writeBytes;
-        bool WriteLine(std::string_view line)//line的结尾必须是\n
+        //line的结尾必须是\n
+        bool WriteLine(std::string_view line)
         {
            return writeBytes(reinterpret_cast<const uint8_t*>(line.data()), line.size());
         }

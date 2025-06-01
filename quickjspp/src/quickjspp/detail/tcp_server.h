@@ -44,7 +44,14 @@ public:
              return false;
         return true;
     }
-
+    /**
+     * @note call closesocket to close the socket after use
+     * example:
+     * if (closesocket(client) == SOCKET_ERROR)
+     * {
+     *     LogE("Failed to close client socket: {}", std::strerror(errno));
+     * }
+    */
     socket_t Accept() {
         sockaddr_in client_addr{};
 #ifdef _WIN32

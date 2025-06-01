@@ -12,8 +12,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #endif
-namespace qjs::detail
-{
+
 
 
 
@@ -35,4 +34,3 @@ struct NetContext
 #endif
     }
 };
-} // namespace qjs::detail
