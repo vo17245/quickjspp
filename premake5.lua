@@ -8,18 +8,18 @@
   file = io.open("quickjs-version.h", "w+")
   file:write("#define QUICKJS_VERSION \"" .. vers .. "\"")
   file:close()
-end)()  
+end)()
 
 
-newoption {
+newoption ({
    trigger     = "jsx",
    description = "Will add JSX support"
-}
+})
 
-newoption {
+newoption ({
    trigger     = "storage",
    description = "Will add persistent storage support"
-}
+})
 
 workspace "quickjs"
 	-- Premake output folder
