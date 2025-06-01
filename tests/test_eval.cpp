@@ -1,6 +1,10 @@
 #include "../quickjs.h"
 #include <iostream>
 #include <string>
+
+
+
+
 // 1. C 函数实现，参数和返回值都是 JSValue
 static JSValue js_print(JSContext *ctx, JSValueConst this_val, int argc,
                         JSValueConst *argv) {
@@ -91,11 +95,42 @@ int test3() {
   JSRuntime *rt = JS_NewRuntime();
   JSContext *ctx = JS_NewContext(rt);
 
-  JS_RunGC(rt);
   JS_FreeContext(ctx);
   JS_FreeRuntime(rt);
   return 0;
 }
-int main() 
-{
-   return test3(); }
+int test4();
+int main() { return test4(); }
+
+int test4() {
+  JSRuntime *rt;
+  JSContext *ctx;
+  rt= JS_NewRuntime();
+  ctx = JS_NewContext(rt);
+  if (!ctx) {
+    exit(2);
+  }
+
+
+
+  // 3. 准备要执行的 JS 代码
+  const char *js_code = "var x = 10; var y = 20; x + y;";
+
+  // 4. 执行 JS 代码
+  JSValue result =
+      JS_Eval(ctx, js_code, strlen(js_code), "<input>", JS_EVAL_TYPE_GLOBAL);
+    JS_FreeValue(ctx, result);
+
+
+
+
+
+
+
+
+
+  JS_FreeContext(ctx);
+  JS_FreeRuntime(rt);
+
+  return 1;
+}

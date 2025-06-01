@@ -90,3 +90,7 @@ add_executable(qjs "qjs.c"
 target_link_libraries(qjs PUBLIC quickjs)
 
 
+target_compile_definitions(qjs PUBLIC
+JS_STRICT_NAN_BOXING # this option enables x64 build on Windows/MSVC
+CONFIG_BIGNUM
+)
