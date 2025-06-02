@@ -142,9 +142,10 @@ void test_closure()
     context.Eval("test()");
     qjs::Value closure1=context.CreateClosure([a](uint32_t x,const std::string& msg){
         std::println("Closure1 called with a={} x={} and msg={}", a, x,msg);
+        return x+a;
     });
     context.GetGlobalObject().SetPropertyStr("test1", closure1);
-    qjs::Value res = context.Eval("test1(5,'hello')");
+    qjs::Value res = context.Eval("let res=test1(5,'hello');print(res);");
     
 }
 int main()

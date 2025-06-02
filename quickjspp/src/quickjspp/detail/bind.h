@@ -136,7 +136,7 @@ struct ConvertToJsType<bool>
 template<>
 struct ConvertToJsType<uint32_t>
 {
-    static JSValue Convert(JSContext* ctx, bool value)
+    static JSValue Convert(JSContext* ctx, uint32_t value)
     {
         return JS_NewUint32(ctx, value);
     }
