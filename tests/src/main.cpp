@@ -1,6 +1,6 @@
 #include <quickjspp/quickjspp.h>
 #include <print>
-#include <quickjspp/detail/debugger_server.h>
+#include <quickjspp/detail/debugger/debugger_server.h>
 #include <thread>
 #include "net_context.h"
 #include "quickjs.h"
@@ -26,7 +26,7 @@ static JSValue js_print(JSContext* ctx, JSValueConst this_val, int argc,
 static JSValue js_sleep(JSContext* ctx, JSValueConst this_val, int argc,
                         JSValueConst* argv)
 {
-    if(argc!=1)
+    if (argc != 1)
     {
         std::print("js_sleep: expected 1 argument, got {}\n", argc);
         return JS_EXCEPTION;
@@ -40,10 +40,10 @@ static JSValue js_sleep(JSContext* ctx, JSValueConst this_val, int argc,
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
     return JS_UNDEFINED;
 }
-JS_BOOL debug_handler(JSContext *ctx, JSAtom file_name, uint32_t line_no, const uint8_t *pc)
+JS_BOOL debug_handler(JSContext* ctx, JSAtom file_name, uint32_t line_no, const uint8_t* pc)
 {
-std::print("lint: {}",line_no);
-return true;
+    std::print("lint: {}", line_no);
+    return true;
 }
 void test_eval()
 {
@@ -51,7 +51,7 @@ void test_eval()
     qjs::Context context = qjs::Context::Create(runtime).value();
 
     // 创建 JS 函数对象，3 表示最多参数个数（任意写）
-    qjs::Value func = context.CreateFunction( js_print, "print", 1);
+    qjs::Value func = context.CreateFunction(js_print, "print", 1);
     auto global_obj = context.GetGlobalObject();
     global_obj.SetPropertyStr("print", func);
     JS_SetBreakpointHandler(context.GetRaw(), debug_handler);
@@ -70,33 +70,30 @@ void test_eval()
 void test_debugger_server()
 {
     qjs::detail::DebuggerServer server;
-    std::thread t([&server](){
-        
+    std::thread t([&server]() {
         server.Run();
-        
     });
-    
-    while(server.IsRunning())
+
+    while (server.IsRunning())
     {
         server.GetCommandSemaphore().Wait();
-        auto command=server.PopCommand();
+        auto command = server.PopCommand();
         std::println("Received command: {}", command.index());
     }
     t.join();
-
 }
 void test_debug()
 {
     qjs::Runtime runtime = qjs::Runtime::Create().value();
     qjs::Context context = qjs::Context::Create(runtime).value();
     auto global_obj = context.GetGlobalObject();
-    qjs::Value func = context.CreateFunction( js_print, "print", 1);
+    qjs::Value func = context.CreateFunction(js_print, "print", 1);
     global_obj.SetPropertyStr("print", func);
 
-    qjs::Value sleep_func = context.CreateFunction( js_sleep, "sleep", 1);
+    qjs::Value sleep_func = context.CreateFunction(js_sleep, "sleep", 1);
     global_obj.SetPropertyStr("sleep", sleep_func);
     context.SetDebuggerMode(1);
-    std::string code=R"(let a=0;
+    std::string code = R"(let a=0;
     while(true){
 print("Hello, Debugger! ",a);
 a++;
@@ -108,11 +105,11 @@ sleep(1000); // 每秒打印一次
 
 void test_builtin()
 {
-qjs::Runtime runtime = qjs::Runtime::Create().value();
+    qjs::Runtime runtime = qjs::Runtime::Create().value();
     qjs::Context context = qjs::Context::Create(runtime).value();
 
     // 创建 JS 函数对象，3 表示最多参数个数（任意写）
-    qjs::Value func = context.CreateFunction( js_print, "print", 1);
+    qjs::Value func = context.CreateFunction(js_print, "print", 1);
     auto global_obj = context.GetGlobalObject();
     global_obj.SetPropertyStr("print", func);
 
@@ -128,15 +125,36 @@ qjs::Runtime runtime = qjs::Runtime::Create().value();
         std::println("Result: {}", s);
     }
 }
-
+void test_closure()
+{
+    qjs::Runtime runtime = qjs::Runtime::Create().value();
+    qjs::Context context = qjs::Context::Create(runtime).value();
+    int a = 10;
+    qjs::Value closure = context.CreateClosureNoWrap(
+        [a](JSContext*,
+            JSValueConst /*this*/,
+            int /*argc*/,
+            JSValueConst* /*argv*/) -> JSValue {
+            std::println("Closure called with a={}", a);
+            return JS_UNDEFINED;
+        });
+    context.GetGlobalObject().SetPropertyStr("test", closure);
+    context.Eval("test()");
+    qjs::Value closure1=context.CreateClosure([a](uint32_t x,const std::string& msg){
+        std::println("Closure1 called with a={} x={} and msg={}", a, x,msg);
+    });
+    context.GetGlobalObject().SetPropertyStr("test1", closure1);
+    qjs::Value res = context.Eval("test1(5,'hello')");
+    
+}
 int main()
 {
     NetContext::Init();
-    //test_eval();
-    //test_debugger_server();
-    test_debug();
-    test_builtin();
-
+    // test_eval();
+    // test_debugger_server();
+    //test_debug();
+    //test_builtin();
+    test_closure();
     NetContext::Cleanup();
     return 0;
 }

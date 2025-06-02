@@ -1,5 +1,5 @@
 #include "quickjspp.h"
-#include "detail/debugger_server.h"
+#include "detail/debugger/debugger_server.h"
 #include "quickjs.h"
 #include <memory>
 #include <unordered_map>
@@ -140,5 +140,9 @@ void Context::SetDebuggerMode(int mode)
     assert(false && "QuickJS is not compiled with debugger support. Please enable CONFIG_DEBUGGER in your QuickJS build.");
 #endif
 }
+
+
+
+
 
 } // namespace qjs

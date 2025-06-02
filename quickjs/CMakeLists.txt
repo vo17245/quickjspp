@@ -28,7 +28,7 @@ set(FILES
 		"list.h"
 		"include/quickjs.h"
 		"quickjs-atom.h"
-		"quickjs-libc.h"
+		"include/quickjs-libc.h"
 		"quickjs-opcode.h"
 		"quickjs-jsx.h"
 )

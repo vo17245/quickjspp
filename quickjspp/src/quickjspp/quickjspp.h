@@ -5,21 +5,28 @@
 #include <string>
 #include <memory>
 #include <thread>
+#include <type_traits>
 #include <vector>
 #include <quickjs-libc.h>
+#include "detail/bind.h"
+#include <functional>
+#include "detail/closure.h"
+#include "detail/wrap_closure.h"
 #ifdef CONFIG_DEBUGGER
 #ifndef QUICKJSPP_ENABLE_DEBUGGER
 #define QUICKJSPP_ENABLE_DEBUGGER
-#endif 
-#endif 
+#endif
+#endif
 namespace qjs
 {
+
 struct DebuggerServerHandle
 {
-    void* handle=nullptr;//qjs::detail::DebuggerServer*
+    void* handle = nullptr; // qjs::detail::DebuggerServer*
     ~DebuggerServerHandle();
     void Destroy();
 };
+using detail::Closure;
 class Context;
 class Value
 {
@@ -90,6 +97,7 @@ public:
         if (!rt.m_Runtime)
             return std::nullopt;
         js_std_init_handlers(rt.GetRaw());
+        detail::InitJsClosureClass(rt.GetRaw());
 
         return rt;
     }
@@ -118,7 +126,6 @@ public:
             js_std_free_handlers(m_Runtime);
             JS_FreeRuntime(m_Runtime);
         }
-            
     }
     JSRuntime* GetRaw() const
     {
@@ -129,6 +136,7 @@ private:
     Runtime() = default;
     JSRuntime* m_Runtime = nullptr;
 };
+
 class Context
 {
 public:
@@ -138,11 +146,9 @@ public:
         ctx.m_Context = JS_NewContext(runtime.GetRaw());
         if (!ctx.m_Context)
             return std::nullopt;
-js_init_module_std(ctx.m_Context, "std");
-js_init_module_os(ctx.m_Context, "os");
-js_std_add_helpers(ctx.m_Context, 0, nullptr);
-
-
+        js_init_module_std(ctx.m_Context, "std");
+        js_init_module_os(ctx.m_Context, "os");
+        js_std_add_helpers(ctx.m_Context, 0, nullptr);
 
         return ctx;
     }
@@ -178,6 +184,11 @@ js_std_add_helpers(ctx.m_Context, 0, nullptr);
         JSValue result = JS_Eval(m_Context, code, length, filename, eval_flags);
         return Value(result, m_Context);
     }
+    Value Eval(std::string_view code)
+    {
+        JSValue result = JS_Eval(m_Context, code.data(), code.length(), "<input>", JS_EVAL_TYPE_GLOBAL);
+        return Value(result, m_Context);
+    }
     Value GetGlobalObject()
     {
         JSValue global = JS_GetGlobalObject(m_Context);
@@ -188,13 +199,32 @@ js_std_add_helpers(ctx.m_Context, 0, nullptr);
         JSValue function = JS_NewCFunction(m_Context, func, name, length);
         return Value(function, m_Context);
     }
+    Value CreateClosureByRaw(Closure* closure)
+    {
+        JSValue jsClosure = detail::CreateClosure(m_Context, closure);
+        return Value(jsClosure, m_Context);
+    }
+    template <typename T>
+    Value CreateClosureNoWrap(T&& closure)
+    {
+        auto* p = new Closure(std::forward<T>(closure));
+        JSValue jsClosure = detail::CreateClosure(m_Context, p);
+        return Value(jsClosure, m_Context);
+    }
+    template <typename T>
+    Value CreateClosure(const T& closure)
+    {
+        auto c=detail::WrapClosure(closure);
+        return CreateClosureNoWrap(std::move(c));
+    }
+
 #ifdef QUICKJSPP_ENABLE_DEBUGGER
-struct BreakPoint
+    struct BreakPoint
     {
         std::string filename;
         uint32_t line;
     };
-void SetDebuggerMode(int mode);
+    void SetDebuggerMode(int mode);
     DebuggerServerHandle& GetDebuggerServer()
     {
         return m_Server;
@@ -203,14 +233,14 @@ void SetDebuggerMode(int mode);
     {
         return m_BreakPoints;
     }
-#endif 
+#endif
 private:
     Context() = default;
     JSContext* m_Context;
 #ifdef QUICKJSPP_ENABLE_DEBUGGER
     DebuggerServerHandle m_Server{nullptr};
-    std::unique_ptr<std::thread>  m_ServerThread;
-    
+    std::unique_ptr<std::thread> m_ServerThread;
+
     std::vector<BreakPoint> m_BreakPoints; // 存储断点信息
 #endif
 };
@@ -243,4 +273,5 @@ inline std::string Value::Convert<std::string>() const
     JS_FreeCString(m_Context, str);
     return result;
 }
+
 } // namespace qjs
