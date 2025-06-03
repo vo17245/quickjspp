@@ -19,7 +19,23 @@
 #endif
 namespace qjs
 {
-
+struct Exception{std::string message;};
+namespace detail
+{
+    template<>
+    struct ConvertToJsType<Exception>
+    {
+        static JSValue Convert(JSContext* ctx, const Exception& e)
+        {
+            // throw
+            JSValue message = JS_NewString(ctx, e.message.c_str());
+            auto err=JS_NewError(ctx);
+            JS_SetPropertyStr(ctx, err, "message", message);//message 会被接管，不需要释放
+            JS_Throw(ctx, err);
+            return JS_EXCEPTION;
+        }
+    };
+}
 struct DebuggerServerHandle
 {
     void* handle = nullptr; // qjs::detail::DebuggerServer*

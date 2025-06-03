@@ -148,6 +148,42 @@ void test_closure()
     qjs::Value res = context.Eval("let res=test1(5,'hello');print(res);");
     
 }
+void test_exception()
+{
+    // init context
+    qjs::Runtime runtime = qjs::Runtime::Create().value();
+    qjs::Context context = qjs::Context::Create(runtime).value();
+    // register function
+    auto global_obj = context.GetGlobalObject();
+    auto test=context.CreateClosure([](){
+        std::print("test closure called\n");
+        return qjs::Exception{"This is a test exception"};
+    });
+    global_obj.SetPropertyStr("test", test);
+    std::string code = R"(
+
+Error.prototype.toJSON = function () {
+  return {
+    name: this.name,
+    message: this.message,
+    stack: this.stack
+  };
+};
+
+    try{
+    test();
+    }
+    catch(e){
+    console.log("Caught exception:", JSON.stringify(e,null,4));
+    }
+    finally{
+    console.log("Finally block executed");
+    }
+    )";
+    context.Eval(code.c_str(), code.size(), "<input>");
+
+  
+}
 int main()
 {
     NetContext::Init();
@@ -155,7 +191,8 @@ int main()
     // test_debugger_server();
     //test_debug();
     //test_builtin();
-    test_closure();
+    //test_closure();
+    test_exception();
     NetContext::Cleanup();
     return 0;
 }
