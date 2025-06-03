@@ -12,6 +12,8 @@
 #include <functional>
 #include "detail/closure.h"
 #include "detail/wrap_closure.h"
+#include "detail/class_wrapper.h"
+#include "quickjspp/detail/traits.h"
 #ifdef CONFIG_DEBUGGER
 #ifndef QUICKJSPP_ENABLE_DEBUGGER
 #define QUICKJSPP_ENABLE_DEBUGGER
@@ -19,23 +21,26 @@
 #endif
 namespace qjs
 {
-struct Exception{std::string message;};
+struct Exception
+{
+    std::string message;
+};
 namespace detail
 {
-    template<>
-    struct ConvertToJsType<Exception>
+template <>
+struct ConvertToJsType<Exception>
+{
+    static JSValue Convert(JSContext* ctx, const Exception& e)
     {
-        static JSValue Convert(JSContext* ctx, const Exception& e)
-        {
-            // throw
-            JSValue message = JS_NewString(ctx, e.message.c_str());
-            auto err=JS_NewError(ctx);
-            JS_SetPropertyStr(ctx, err, "message", message);//message 会被接管，不需要释放
-            JS_Throw(ctx, err);
-            return JS_EXCEPTION;
-        }
-    };
-}
+        // throw
+        JSValue message = JS_NewString(ctx, e.message.c_str());
+        auto err = JS_NewError(ctx);
+        JS_SetPropertyStr(ctx, err, "message", message); // message 会被接管，不需要释放
+        JS_Throw(ctx, err);
+        return JS_EXCEPTION;
+    }
+};
+} // namespace detail
 struct DebuggerServerHandle
 {
     void* handle = nullptr; // qjs::detail::DebuggerServer*
@@ -43,6 +48,77 @@ struct DebuggerServerHandle
     void Destroy();
 };
 using detail::Closure;
+
+
+template <typename T>
+class ClassBuilder
+{
+public:
+    /**
+     * usage:
+     * struct Triangle
+     * {
+     *      Vec2f a,b,c;
+     *      float CalculateArea();
+     *      bool Contain(const Vec2f& p);
+     * };
+     * auto builder=ClassBuilder<Triangle>();
+     * builder.Method("CalculateArea",[](Triangle& t){return t.CalculateArea();});
+     * builder.Method("Contain",[](Triangle& t,const Vec2f& p){return t.Contain(p);});
+    */
+    template<typename U>
+    struct MethodArgs;
+    template<typename... Us>
+    struct MethodArgs<std::tuple<Us...>>
+    {
+        using Type=std::tuple<JSContext*,T*,int,JSValue*>;
+    };
+    template<typename F>
+    void Method(std::string_view name,F&& func)
+    {
+        using Traits=detail::LambdaTraits<decltype(&std::remove_reference_t<F>::operator())>;
+        using ReturnType=Traits::ReturnType;
+        using ArgsTuple=Traits::ArgsTuple;
+        Closure method=[](JSContext* ctx,
+                                      JSValueConst /*this*/this_val,
+                                      int /*argc*/ argc,
+                                      JSValueConst* /*argv*/ argv)->JSValue{
+            using MA=MethodArgs<ArgsTuple>::Type;
+            MA ma;
+            ArgsTuple args;
+            
+        };
+    }
+    /* usage:
+    *   struct Entity{std::string tag};
+    *   auto builder=ClassBuilder<Entity>();
+    *   builder.Property("tag",
+    *       [](Entity& t){return t.tag;},
+    *       [](Entity& t,std::string& v){t.tag=v;}
+    *   );
+    */
+    template<typename Getter,typename Setter>
+    void Property(std::string_view name, Getter&& getter,Setter&& setter)
+    {
+        using Traits=detail::LambdaTraits<decltype(&std::remove_reference_t<Getter>::operator())>;
+        using PropertyType=Traits::ReturnType;
+        m_Class.properties.push_back(std::string(name));
+        //wrap getter
+        auto _getter=[getter=std::move(getter)](JSContext* ctx,void* t){
+            return detail::ConvertToJsType<PropertyType>::Convert(ctx,getter(*(T*)t));
+        };
+        m_Class.setter.push_back(std::move(_getter));
+        // wrap setter
+        auto _setter=[setter=std::move(setter)](JSContext* ctx,void*  t,JSValue v)
+        {
+            PropertyType _v=detail::ConvertToCppType<PropertyType>::Convert(ctx,v);
+            setter(*(T*)t,_v);
+        };
+        m_Class.setter.push_back(std::move(_setter));
+    }
+private:
+    detail::Class m_Class;
+};
 class Context;
 class Value
 {
@@ -102,6 +178,9 @@ public:
 private:
     JSValue m_Value = JS_UNDEFINED;
     JSContext* m_Context = nullptr;
+    std::vector<std::function<void(void*)>> m_Destructors; // 用于存储析构函数
+    std::vector<std::function<void*()>> m_Constructors;    // 用于存储构造函数
+    std::vector<std::string> m_ClassName;
 };
 class Runtime
 {
@@ -230,7 +309,7 @@ public:
     template <typename T>
     Value CreateClosure(const T& closure)
     {
-        auto c=detail::WrapClosure(closure);
+        auto c = detail::WrapClosure(closure);
         return CreateClosureNoWrap(std::move(c));
     }
 
