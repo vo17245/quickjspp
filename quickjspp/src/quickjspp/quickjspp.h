@@ -21,6 +21,8 @@
 #endif
 namespace qjs
 {
+
+
 struct Exception
 {
     std::string message;
@@ -51,9 +53,26 @@ using detail::Closure;
 
 
 template <typename T>
-class ClassBuilder
+class ClassRegistry
 {
 public:
+    
+    ClassRegistry& Begin(std::string_view className)
+    {
+        m_Class=detail::Class();
+        m_Class.className= className;
+        m_Class.constructor = []() -> void* {
+            return new T();
+        };
+        m_Class.destructor = [](void* t) {
+            delete static_cast<T*>(t);
+        };
+        return *this;
+    }
+    void End()
+    {
+        detail::RegisterClass(std::move(m_Class));
+    }
     /**
      * usage:
      * struct Triangle
@@ -63,42 +82,52 @@ public:
      *      bool Contain(const Vec2f& p);
      * };
      * auto builder=ClassBuilder<Triangle>();
-     * builder.Method("CalculateArea",[](Triangle& t){return t.CalculateArea();});
-     * builder.Method("Contain",[](Triangle& t,const Vec2f& p){return t.Contain(p);});
+     * builder.Method("CalculateArea",[](Triangle& self){return self.CalculateArea();});
+     * builder.Method("Contain",[](Triangle& self,const Vec2f& p){return self.Contain(p);});
     */
-    template<typename U>
-    struct MethodArgs;
-    template<typename... Us>
-    struct MethodArgs<std::tuple<Us...>>
-    {
-        using Type=std::tuple<JSContext*,T*,int,JSValue*>;
-    };
+    
+    
+    
     template<typename F>
-    void Method(std::string_view name,F&& func)
+    ClassRegistry& Method(std::string_view name,F&& func)
     {
         using Traits=detail::LambdaTraits<decltype(&std::remove_reference_t<F>::operator())>;
         using ReturnType=Traits::ReturnType;
-        using ArgsTuple=Traits::ArgsTuple;
-        Closure method=[](JSContext* ctx,
-                                      JSValueConst /*this*/this_val,
-                                      int /*argc*/ argc,
-                                      JSValueConst* /*argv*/ argv)->JSValue{
-            using MA=MethodArgs<ArgsTuple>::Type;
-            MA ma;
-            ArgsTuple args;
-            
+        using AllArgsTuple=Traits::ArgsTuple;
+        using Self=typename detail::SliceType<AllArgsTuple, 0, 1>::Type;
+        using Args=typename detail::SliceType<AllArgsTuple, 1, std::tuple_size_v<AllArgsTuple>>::Type;
+        detail::ClassMethod method=[func=std::move(func)](JSContext* ctx,void* c_this/*cpp this*/ ,int argc /*argc*/,JSValue* argv /*argv*/)->JSValue{
+            Args args;
+            if(!detail::ConvertArgs2<Args>{}(args,argv,ctx))
+            {
+                JS_ThrowTypeError(ctx, "Argument conversion failed");
+                return JS_EXCEPTION; // 转换失败
+            }
+            auto methodArgs=std::tuple_cat(std::make_tuple((T&)*static_cast<T*>(c_this)),std::move(args));
+            if constexpr (std::is_same_v<ReturnType, void>)
+            {
+                std::apply(func, methodArgs);
+                return JS_UNDEFINED;
+            }
+            else
+            {
+                auto res = std::apply(func, methodArgs);
+                return detail::ConvertToJsType<ReturnType>::Convert(ctx, res);
+            }
         };
+        m_Class.methods.emplace_back(std::string(name), std::move(method));
+        return *this;
     }
     /* usage:
     *   struct Entity{std::string tag};
     *   auto builder=ClassBuilder<Entity>();
     *   builder.Property("tag",
-    *       [](Entity& t){return t.tag;},
-    *       [](Entity& t,std::string& v){t.tag=v;}
+    *       [](Entity& self){return self.tag;},
+    *       [](Entity& self,std::string& v){self.tag=v;}
     *   );
     */
     template<typename Getter,typename Setter>
-    void Property(std::string_view name, Getter&& getter,Setter&& setter)
+    ClassRegistry& Property(std::string_view name, Getter&& getter,Setter&& setter)
     {
         using Traits=detail::LambdaTraits<decltype(&std::remove_reference_t<Getter>::operator())>;
         using PropertyType=Traits::ReturnType;
@@ -107,14 +136,21 @@ public:
         auto _getter=[getter=std::move(getter)](JSContext* ctx,void* t){
             return detail::ConvertToJsType<PropertyType>::Convert(ctx,getter(*(T*)t));
         };
-        m_Class.setter.push_back(std::move(_getter));
+        m_Class.getter.push_back(std::move(_getter));
         // wrap setter
         auto _setter=[setter=std::move(setter)](JSContext* ctx,void*  t,JSValue v)
         {
-            PropertyType _v=detail::ConvertToCppType<PropertyType>::Convert(ctx,v);
+            auto vOpt=detail::ConvertToCppType<PropertyType>::Convert(ctx,v);
+            if(!vOpt)
+            {
+                assert(false && "Failed to convert JS value to C++ type");
+                return;
+            }
+            PropertyType _v=*vOpt;
             setter(*(T*)t,_v);
         };
         m_Class.setter.push_back(std::move(_setter));
+        return *this;
     }
 private:
     detail::Class m_Class;
@@ -193,6 +229,7 @@ public:
             return std::nullopt;
         js_std_init_handlers(rt.GetRaw());
         detail::InitJsClosureClass(rt.GetRaw());
+        detail::InitJsClassClass(rt.GetRaw());
 
         return rt;
     }
@@ -244,7 +281,7 @@ public:
         js_init_module_std(ctx.m_Context, "std");
         js_init_module_os(ctx.m_Context, "os");
         js_std_add_helpers(ctx.m_Context, 0, nullptr);
-
+        detail::EnableCreator(ctx.m_Context);
         return ctx;
     }
     Context(const Context&) = delete;

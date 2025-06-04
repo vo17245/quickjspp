@@ -184,6 +184,43 @@ Error.prototype.toJSON = function () {
 
   
 }
+struct Vec3f
+{
+    float x,y,z;
+    float Norm() const
+    {
+        return std::sqrt(x * x + y * y + z * z);
+    }
+};
+void test_class()
+{
+    // init context
+    qjs::Runtime runtime = qjs::Runtime::Create().value();
+    qjs::ClassRegistry<Vec3f> registry;
+
+    registry.Begin("Vec3f")
+    .Property("X", [](Vec3f& t){return t.x;},[](Vec3f& t,float v){t.x=v;})
+    .Property("Y", [](Vec3f& t){return t.y;},[](Vec3f& t,float v){t.y=v;})
+    .Property("Z", [](Vec3f& t){return t.z;},[](Vec3f& t,float v){t.z=v;})
+    .Method("Norm", [](Vec3f& t) { return t.Norm(); })
+    .End();
+    qjs::Context context = qjs::Context::Create(runtime).value();
+   
+    std::string code = R"(
+    try{
+    let v=CreateVec3f();
+    v.SetX(1.0);
+    v.SetY(1.0);
+    v.SetZ(1.0);
+    console.log("Vec3f X:", v.GetX());
+    console.log("Norm: ", v.Norm());
+    }
+    catch(e){
+        console.log("Caught exception:", e,e.stack);
+    }
+    )";
+    context.Eval(code.c_str(), code.size(), "<input>");
+}
 int main()
 {
     NetContext::Init();
@@ -192,7 +229,8 @@ int main()
     //test_debug();
     //test_builtin();
     //test_closure();
-    test_exception();
+    //test_exception();
+    test_class();
     NetContext::Cleanup();
     return 0;
 }

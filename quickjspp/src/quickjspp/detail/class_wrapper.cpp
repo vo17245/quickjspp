@@ -86,8 +86,8 @@ void EnableCreator(JSContext* ctx)
                     return clazz.getter[j](context, obj->handle);
                 });
                 JSValue js_getter = CreateClosure(ctx, getter);
-                std::string getterName = std::string("Get") + clazz.properties[i];
-                JS_SetPropertyStr(ctx, obj, "Type", js_getter);
+                std::string getterName = std::string("Get") + clazz.properties[j];
+                JS_SetPropertyStr(ctx, obj, getterName.c_str(), js_getter);
                 // setter
                 Closure* setter = new Closure([j, clazz](JSContext* context,
                                                          JSValueConst /*this*/ this_val,
@@ -102,7 +102,7 @@ void EnableCreator(JSContext* ctx)
                     return JS_UNDEFINED;
                 });
                 JSValue js_setter=CreateClosure(ctx, setter);
-                std::string setterName = std::string("Set") + clazz.properties[i];
+                std::string setterName = std::string("Set") + clazz.properties[j];
                 JS_SetPropertyStr(ctx, obj, setterName.c_str(), js_setter);
             }
             // set method
@@ -118,6 +118,7 @@ void EnableCreator(JSContext* ctx)
                 JSValue js_c=CreateClosure(ctx, c);
                 JS_SetPropertyStr(ctx, obj, name.c_str(), js_c);
             }
+            return obj;
         });
         JSValue js_creator = CreateClosure(ctx, creator);
         std::string creatorName = std::string("Create") + clazz.className;
