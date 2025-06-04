@@ -192,6 +192,7 @@ struct Vec3f
         return std::sqrt(x * x + y * y + z * z);
     }
 };
+
 void test_class()
 {
     // init context
@@ -221,6 +222,103 @@ void test_class()
     )";
     context.Eval(code.c_str(), code.size(), "<input>");
 }
+struct Timer 
+{
+    std::chrono::steady_clock::time_point start_time;
+    Timer() : start_time(std::chrono::steady_clock::now()) {}
+    void Reset() { start_time = std::chrono::steady_clock::now(); }
+    double ElapsedSeconds() const
+    {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
+    }
+};  
+void benchmark_class()
+{
+    qjs::Runtime runtime = qjs::Runtime::Create().value();
+    qjs::ClassRegistry<Vec3f> registry;
+
+    registry.Begin("Vec3f")
+    .Property("X", [](Vec3f& t){return t.x;},[](Vec3f& t,float v){t.x=v;})
+    .Property("Y", [](Vec3f& t){return t.y;},[](Vec3f& t,float v){t.y=v;})
+    .Property("Z", [](Vec3f& t){return t.z;},[](Vec3f& t,float v){t.z=v;})
+    .Method("Norm", [](Vec3f& t) { return t.Norm(); })
+    .End();
+    {
+        std::print("Benchmarking Vec3f class Norm function call and property set\n");
+    double native_time=0;
+    {
+        Timer timer;
+        Vec3f v;
+        for (int i = 0; i < 1000000; ++i)
+        {
+            
+            v.x = 1.0f;
+            v.y = 1.0f;
+            v.z = 1.0f;
+            auto norm = v.Norm();
+        }
+        native_time = timer.ElapsedSeconds();
+    }
+    std::print("Native time: {} seconds\n", native_time);
+    qjs::Context context = qjs::Context::Create(runtime).value();
+    double js_time = 0;
+    {
+        Timer timer;
+        std::string code = R"(
+        let v=CreateVec3f();
+        for (let i = 0; i < 1000000; ++i) {
+            
+            v.SetX(1.0);
+            v.SetY(1.0);
+            v.SetZ(1.0);
+            let norm = v.Norm();
+        }
+        )";
+        context.Eval(code.c_str(), code.size(), "<input>");
+        js_time = timer.ElapsedSeconds();
+    }   
+    std::print("JS time: {} seconds\n", js_time);
+    std::print("js/native ratio: {}\n",  js_time/native_time );
+    }
+    {
+        std::print("Benchmarking Vec3f class Norm function call ,class constructor and property set\n");
+    double native_time=0;
+    {
+        Timer timer;
+        
+        for (int i = 0; i < 1000; ++i)
+        {
+            Vec3f v;
+            v.x = 1.0f;
+            v.y = 1.0f;
+            v.z = 1.0f;
+            auto norm = v.Norm();
+        }
+        native_time = timer.ElapsedSeconds();
+    }
+    std::print("Native time: {} seconds\n", native_time);
+    qjs::Context context = qjs::Context::Create(runtime).value();
+    double js_time = 0;
+    {
+        Timer timer;
+        std::string code = R"(
+        
+        for (let i = 0; i < 1000; ++i) {
+            let v=CreateVec3f();
+            v.SetX(1.0);
+            v.SetY(1.0);
+            v.SetZ(1.0);
+            let norm = v.Norm();
+        }
+        )";
+        context.Eval(code.c_str(), code.size(), "<input>");
+        js_time = timer.ElapsedSeconds();
+    }   
+    std::print("JS time: {} seconds\n", js_time);
+    std::print("js/native ratio: {}\n",  js_time/native_time );
+    }
+    
+}
 int main()
 {
     NetContext::Init();
@@ -230,7 +328,8 @@ int main()
     //test_builtin();
     //test_closure();
     //test_exception();
-    test_class();
+    //test_class();
+    benchmark_class();
     NetContext::Cleanup();
     return 0;
 }
