@@ -245,9 +245,6 @@ public:
 private:
     JSValue m_Value = JS_UNDEFINED;
     JSContext* m_Context = nullptr;
-    std::vector<std::function<void(void*)>> m_Destructors; // 用于存储析构函数
-    std::vector<std::function<void*()>> m_Constructors;    // 用于存储构造函数
-    std::vector<std::string> m_ClassName;
 };
 class Runtime
 {
