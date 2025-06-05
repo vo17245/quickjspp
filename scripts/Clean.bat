@@ -1,2 +1,2 @@
-python internal/Clean.py
+python Clean.py
 pause
