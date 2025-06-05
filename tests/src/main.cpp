@@ -2,6 +2,7 @@
 #include <print>
 #include <quickjspp/detail/debugger/debugger_server.h>
 #include <thread>
+#include <tuple>
 #include "net_context.h"
 #include "quickjs.h"
 #include "quickjs-libc.h"

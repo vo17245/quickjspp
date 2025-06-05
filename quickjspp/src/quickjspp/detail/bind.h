@@ -1,4 +1,5 @@
 #pragma once
+#include <cassert>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -7,6 +8,7 @@
 #include <optional>
 #include <tuple>
 #include "class_wrapper.h"
+#include <print>//for debug
 namespace qjs::detail
 {
 template <typename T>
@@ -173,6 +175,11 @@ struct ConvertArg
             // 认为是注册过的类型
             JSValue val = argv[n];
             void* handle=GetOpaque(ctx, val);
+            if(!handle)
+            {
+                assert(false&& "failed to get opaque, may be not a registered type");
+                return false;
+            }
             Type ptr= reinterpret_cast<Type>(handle);
             //static_assert(std::is_pointer<Type>::value,"Type must be a pointer to a registered type");
             

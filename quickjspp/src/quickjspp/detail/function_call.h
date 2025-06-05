@@ -9,7 +9,7 @@ struct Decay
     using type = std::decay_t<T>*;
 };
 template<typename T>
-struct Decay<T,std::enable_if<HasToCppTypeConvert<T>::value>>
+struct Decay<T,std::enable_if_t<HasToCppTypeConvert<std::decay_t<T>>::value>>
 {
     using type=std::decay_t<T>;
 };
@@ -52,7 +52,7 @@ struct DereferenceIfRegistered
     }
 };
 template<typename T>
-struct DereferenceIfRegistered<T, std::enable_if<HasToCppTypeConvert<T>::value>>
+struct DereferenceIfRegistered<T, std::enable_if_t<HasToCppTypeConvert<T>::value>>
 {
     // 如果不是注册的类型，直接返回引用
     T& operator()(T& t)
