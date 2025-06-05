@@ -315,7 +315,7 @@ void benchmark_class()
             let v=new Vec3f();
             v.x=1.0;
             v.y=1.0;
-            v.=1.0;
+            v.z=1.0;
             let norm = v.Norm();
         }
         }
