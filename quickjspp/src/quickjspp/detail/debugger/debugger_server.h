@@ -310,7 +310,7 @@ private:
         }
         else
         {
-            // todo: handle error
+            LogE("Unknown command: {}", word);
         }
     }
     template <typename T>

@@ -3,6 +3,7 @@
 #include "bind.h"
 #include "traits.h"
 #include "function_call.h"
+#include <utility>
 namespace qjs::detail
 {
 
@@ -17,6 +18,21 @@ struct ConvertArgs2<std::tuple<Ts...>>
         return ConvertArgs<Ts...>{}(args, argv, ctx);
     }
 };
+namespace WrapClosureUtils
+{
+template<typename F,typename T,size_t... I>
+auto apply_args_impl(F& f,T& args,std::index_sequence<I...>)
+{
+    return f(detail::DereferenceIfRegistered<std::tuple_element_t<I, T>>{}(std::get<I>(args))...);
+}
+template<typename F,typename T>
+auto apply_args(F& f,T& args)
+{
+    return apply_args_impl(f, args,
+        std::make_index_sequence<std::tuple_size_v<T>>{});
+}
+
+}
 template <typename F>
 inline Closure WrapClosure(const F& func)
 {
@@ -39,12 +55,12 @@ inline Closure WrapClosure(const F& func)
         }
         if constexpr (std::is_same_v<Return, void>)
         {
-            std::apply(func, args);
+            WrapClosureUtils::apply_args(func, args);
             return JS_UNDEFINED;
         }
         else
         {
-            auto res = std::apply(func, args);
+            auto res = WrapClosureUtils::apply_args(func, args);
             return ConvertToJsType<Return>::Convert(ctx, res);
         }
     };

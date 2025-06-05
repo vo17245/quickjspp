@@ -386,7 +386,38 @@ void benchmark_class()
         std::print("js/native ratio: {}\n", js_time / native_time);
     }
 }
+void test_closure2()
+{
+    qjs::ClassRegistry<Vec3f> registry;
+    registry.Begin("Vec3f")
+        .Property("x", [](Vec3f& t) { return t.x; }, [](Vec3f& t, float v) { t.x = v; })
+        .Property("y", [](Vec3f& t) { return t.y; }, [](Vec3f& t, float v) { t.y = v; })
+        .Property("z", [](Vec3f& t) { return t.z; }, [](Vec3f& t, float v) { t.z = v; })
+        .Method("Norm", [](Vec3f& t) { return t.Norm(); })
+        .End();
+    qjs::Runtime runtime = qjs::Runtime::Create().value();
+    qjs::Context context = qjs::Context::Create(runtime).value();
+    
 
+    
+    auto closure=context.CreateClosure([](Vec3f& v){
+        std::println("x {} y {} z {}",v.x, v.y, v.z);
+    });
+    context.GetGlobalObject().SetPropertyStr("PrintVec3f", closure);
+    std::string code = R"(
+    try{
+    let v=new Vec3f();
+    v.x=1.0;
+    v.y=2.0;
+    v.z=3.0;
+    PrintVec3f(v);
+    }
+    catch(e){
+        console.log("Caught exception:", e,e.stack);
+    }
+    )";
+    context.Eval(code.c_str(), code.size(), "<input>");
+}
 int main()
 {
     NetContext::Init();
@@ -396,8 +427,9 @@ int main()
     // test_builtin();
     // test_closure();
     // test_exception();
-    test_class();
+    //test_class();
     // benchmark_class();
+    test_closure2();
     NetContext::Cleanup();
     return 0;
 }

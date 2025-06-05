@@ -47,6 +47,25 @@ struct ConvertToJsType<Exception>
 struct DebuggerServerHandle
 {
     void* handle = nullptr; // qjs::detail::DebuggerServer*
+    explicit DebuggerServerHandle(void* h) : handle(h) {}
+    DebuggerServerHandle() = default;
+    DebuggerServerHandle(const DebuggerServerHandle&) = delete;
+    DebuggerServerHandle& operator=(const DebuggerServerHandle&) = delete;
+    DebuggerServerHandle(DebuggerServerHandle&& other) noexcept :
+        handle(other.handle)
+    {
+        other.handle = nullptr;
+    }
+    DebuggerServerHandle& operator=(DebuggerServerHandle&& other) noexcept
+    {
+        if (this != &other)
+        {
+            Destroy();
+            handle = other.handle;
+            other.handle = nullptr;
+        }
+        return *this;
+    }
     ~DebuggerServerHandle();
     void Destroy();
 };
