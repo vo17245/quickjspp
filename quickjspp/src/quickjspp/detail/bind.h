@@ -6,16 +6,22 @@
 #include <quickjs.h>
 #include <optional>
 #include <tuple>
+#include "class_wrapper.h"
 namespace qjs::detail
 {
 template <typename T>
 struct ConvertToCppType
 {
-    static std::optional<T> Convert(JSContext* ctx, JSValue value)
-    {
-        static_assert(sizeof(T) == 0, "Unsupported type for conversion");
-        return std::nullopt; // 默认返回JSValue
-    }
+};
+template <typename T, typename = void>
+struct HasToCppTypeConvert
+{
+    static constexpr bool value = false;
+};
+template <typename T>
+struct HasToCppTypeConvert<T, std::void_t<decltype(static_cast<std::optional<T>(*)(JSContext*, JSValue)>(&ConvertToCppType<T>::Convert))>>
+{
+    static constexpr bool value = true;
 };
 template <>
 struct ConvertToCppType<int32_t>
@@ -28,10 +34,11 @@ struct ConvertToCppType<int32_t>
         return result;
     }
 };
+
 template <>
 struct ConvertToCppType<uint32_t>
 {
-    static std::optional<int32_t> Convert(JSContext* ctx, JSValue value)
+    static std::optional<uint32_t> Convert(JSContext* ctx, JSValue value)
     {
         uint32_t result;
         if (JS_ToUint32(ctx, &result, value) < 0)
@@ -87,12 +94,12 @@ struct ConvertToCppType<bool>
         return std::nullopt; // 转换失败
     }
 };
-template<typename T>
+template <typename T>
 struct ConvertToJsType
 {
-    static_assert(sizeof(T)==0,"unsupport type" );
 };
-template<>
+
+template <>
 struct ConvertToJsType<int32_t>
 {
     static JSValue Convert(JSContext* ctx, int32_t value)
@@ -100,7 +107,7 @@ struct ConvertToJsType<int32_t>
         return JS_NewInt32(ctx, value);
     }
 };
-template<>
+template <>
 struct ConvertToJsType<double>
 {
     static JSValue Convert(JSContext* ctx, double value)
@@ -108,7 +115,7 @@ struct ConvertToJsType<double>
         return JS_NewFloat64(ctx, value);
     }
 };
-template<>
+template <>
 struct ConvertToJsType<std::string>
 {
     static JSValue Convert(JSContext* ctx, const std::string& value)
@@ -116,7 +123,7 @@ struct ConvertToJsType<std::string>
         return JS_NewString(ctx, value.c_str());
     }
 };
-template<>
+template <>
 struct ConvertToJsType<float>
 {
     static JSValue Convert(JSContext* ctx, float value)
@@ -124,7 +131,7 @@ struct ConvertToJsType<float>
         return JS_NewFloat64(ctx, static_cast<double>(value));
     }
 };
-template<>
+template <>
 struct ConvertToJsType<bool>
 {
     static JSValue Convert(JSContext* ctx, bool value)
@@ -133,7 +140,7 @@ struct ConvertToJsType<bool>
     }
 };
 
-template<>
+template <>
 struct ConvertToJsType<uint32_t>
 {
     static JSValue Convert(JSContext* ctx, uint32_t value)
@@ -142,31 +149,51 @@ struct ConvertToJsType<uint32_t>
     }
 };
 
-
 template <size_t n, typename... Ts>
 struct ConvertArg
 {
     bool operator()(std::tuple<Ts...>& args, JSValueConst* argv, JSContext* ctx)
     {
         auto& dst = std::get<n>(args);
-        auto res = ConvertToCppType<std::decay_t<decltype(dst)>>::Convert(ctx, argv[n]);
-        if (!res.has_value())
+        using Type= std::decay_t<decltype(dst)>;
+        if constexpr (HasToCppTypeConvert<Type>::value)
         {
-            JS_ThrowTypeError(ctx, "Argument %zu conversion failed", n);
-            return false; // 转换失败
+            auto res = ConvertToCppType<std::decay_t<decltype(dst)>>::Convert(ctx, argv[n]);
+            if (!res.has_value())
+            {
+                JS_ThrowTypeError(ctx, "Argument %zu conversion failed", n);
+                return false; // 转换失败
+            }
+            dst = std::move(res.value());
+            return true; // 转换成功
         }
-        dst = std::move(res.value());
-        return true; // 转换成功
+        else
+        {
+            static_assert(std::is_pointer<Type>::value, "Type must be a pointer to a registered type or a base type");
+            // 认为是注册过的类型
+            JSValue val = argv[n];
+            void* handle=GetOpaque(ctx, val);
+            Type ptr= reinterpret_cast<Type>(handle);
+            //static_assert(std::is_pointer<Type>::value,"Type must be a pointer to a registered type");
+            
+            if (!ptr)
+            {
+                JS_ThrowTypeError(ctx, "Argument %zu is not a registered type or base type", n);
+                return false; // 转换失败
+            }
+            dst = ptr; // 将指针赋值给目标类型
+            return true; // 转换成功
+        }
     }
 };
-template<size_t n,typename... Ts>
+template <size_t n, typename... Ts>
 struct ConvertArgsImpl
 {
     bool operator()(std::tuple<Ts...>& args, JSValueConst* argv, JSContext* ctx)
     {
-        bool res=ConvertArg<n, Ts...>{}(args,argv,ctx);
-        if(!res)return false;
-        if constexpr(n!=0)
+        bool res = ConvertArg<n, Ts...>{}(args, argv, ctx);
+        if (!res) return false;
+        if constexpr (n != 0)
         {
             return ConvertArgsImpl<n - 1, Ts...>{}(args, argv, ctx); // 递归处理前面的参数
         }
@@ -192,7 +219,7 @@ template <typename F, typename T, typename... Ts>
 struct FunctionCall
 {
     JSValue operator()(JSContext* ctx, JSValueConst this_val, int argc,
-                       JSValueConst* argv,F f)
+                       JSValueConst* argv, F f)
     {
         if (argc != sizeof...(Ts))
         {
@@ -208,7 +235,7 @@ struct FunctionCall
                 return JS_EXCEPTION; // 转换失败
             }
         }
-        auto res=std::apply(f, args);
+        auto res = std::apply(f, args);
         return ConvertToJsType<T>{}(res);
     }
 };

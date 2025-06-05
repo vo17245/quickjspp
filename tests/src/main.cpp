@@ -140,13 +140,12 @@ void test_closure()
         });
     context.GetGlobalObject().SetPropertyStr("test", closure);
     context.Eval("test()");
-    qjs::Value closure1=context.CreateClosure([a](uint32_t x,const std::string& msg){
-        std::println("Closure1 called with a={} x={} and msg={}", a, x,msg);
-        return x+a;
+    qjs::Value closure1 = context.CreateClosure([a](uint32_t x, const std::string& msg) {
+        std::println("Closure1 called with a={} x={} and msg={}", a, x, msg);
+        return x + a;
     });
     context.GetGlobalObject().SetPropertyStr("test1", closure1);
     qjs::Value res = context.Eval("let res=test1(5,'hello');print(res);");
-    
 }
 void test_exception()
 {
@@ -155,7 +154,7 @@ void test_exception()
     qjs::Context context = qjs::Context::Create(runtime).value();
     // register function
     auto global_obj = context.GetGlobalObject();
-    auto test=context.CreateClosure([](){
+    auto test = context.CreateClosure([]() {
         std::print("test closure called\n");
         return qjs::Exception{"This is a test exception"};
     });
@@ -181,15 +180,30 @@ Error.prototype.toJSON = function () {
     }
     )";
     context.Eval(code.c_str(), code.size(), "<input>");
-
-  
 }
 struct Vec3f
 {
-    float x,y,z;
+    float x, y, z;
     float Norm() const
     {
         return std::sqrt(x * x + y * y + z * z);
+    }
+    float TestFunction(int32_t a, float b, uint32_t c, std::string& d)
+    {
+        std::print("TestFunction called with param: {} {} {} {}\n", a, b, c, d);
+        return a + b;
+    }
+};
+
+
+struct Vec4f
+{
+    float x, y, z, w;
+    void CopyFromVec3f(const Vec3f& v)
+    {
+        x = v.x;
+        y = v.y;
+        z = v.z;
     }
 };
 
@@ -197,73 +211,112 @@ void test_class()
 {
     // init context
     qjs::Runtime runtime = qjs::Runtime::Create().value();
-    qjs::ClassRegistry<Vec3f> registry;
+    {
+qjs::ClassRegistry<Vec3f> registry;
 
     registry.Begin("Vec3f")
-    .Property("x", [](Vec3f& t){return t.x;},[](Vec3f& t,float v){t.x=v;})
-    .Property("y", [](Vec3f& t){return t.y;},[](Vec3f& t,float v){t.y=v;})
-    .Property("z", [](Vec3f& t){return t.z;},[](Vec3f& t,float v){t.z=v;})
-    .Method("Norm", [](Vec3f& t) { return t.Norm(); })
-    .End();
+        .Property("x", [](Vec3f& t) { return t.x; }, [](Vec3f& t, float v) { t.x = v; })
+        .Property("y", [](Vec3f& t) { return t.y; }, [](Vec3f& t, float v) { t.y = v; })
+        .Property("z", [](Vec3f& t) { return t.z; }, [](Vec3f& t, float v) { t.z = v; })
+        .Method("Norm", [](Vec3f& t) { return t.Norm(); })
+        .Method("TestFunction", [](Vec3f& t, int a, float b, uint32_t c, std::string& d) { return t.TestFunction(a, b, c, d); })
+        .End();
+    }
+    
+    {
+    qjs::ClassRegistry<Vec4f>  registry;
+    registry.Begin("Vec4f")
+        .Property("x", [](Vec4f& t) { return t.x; }, [](Vec4f& t, float v) { t.x = v; })
+        .Property("y", [](Vec4f& t) { return t.y; }, [](Vec4f& t, float v) { t.y = v; })
+        .Property("z", [](Vec4f& t) { return t.z; }, [](Vec4f& t, float v) { t.z = v; })
+        .Property("w", [](Vec4f& t) { return t.w; }, [](Vec4f& t, float v) { t.w = v; })
+        .Method("CopyFromVec3f", [](Vec4f& t, Vec3f& v) { t.CopyFromVec3f(v); })
+        .End();
+    }
     qjs::Context context = qjs::Context::Create(runtime).value();
-   
-    std::string code = R"(
+    {
+std::string code = R"(
     try{
     let v=new Vec3f();
     v.x=1.0;
     v.y=2.0;
     v.z=3.0;
     console.log("call Norm:",v.Norm());
+    console.log("call TestFunction:",v.TestFunction(1,2.0,3,"hello"));
     }
     catch(e){
         console.log("Caught exception:", e,e.stack);
     }
     )";
     context.Eval(code.c_str(), code.size(), "<input>");
+    }
+    {
+        std::string code = R"(
+    try{
+    let v4=new Vec4f();
+    let v3=new Vec3f();
+    v3.x=1.0;
+    v3.y=2.0;
+    v3.z=3.0;
+    v4.CopyFromVec3f(v3);
+    console.log("Vec4f after CopyFromVec3f:",v4.x,v4.y,v4.z,v4.w);
+    }
+    catch(e){
+        console.log("Caught exception:", e,e.stack);
+    }
+    )";
+    context.Eval(code.c_str(), code.size(), "<input>");
+    }
+    
 }
-struct Timer 
+struct Timer
 {
     std::chrono::steady_clock::time_point start_time;
-    Timer() : start_time(std::chrono::steady_clock::now()) {}
-    void Reset() { start_time = std::chrono::steady_clock::now(); }
+    Timer() :
+        start_time(std::chrono::steady_clock::now())
+    {
+    }
+    void Reset()
+    {
+        start_time = std::chrono::steady_clock::now();
+    }
     double ElapsedSeconds() const
     {
         return std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
     }
-};  
+};
 void benchmark_class()
 {
     qjs::Runtime runtime = qjs::Runtime::Create().value();
     qjs::ClassRegistry<Vec3f> registry;
 
     registry.Begin("Vec3f")
-    .Property("x", [](Vec3f& t){return t.x;},[](Vec3f& t,float v){t.x=v;})
-    .Property("y", [](Vec3f& t){return t.y;},[](Vec3f& t,float v){t.y=v;})
-    .Property("z", [](Vec3f& t){return t.z;},[](Vec3f& t,float v){t.z=v;})
-    .Method("Norm", [](Vec3f& t) { return t.Norm(); })
-    .End();
+        .Property("x", [](Vec3f& t) { return t.x; }, [](Vec3f& t, float v) { t.x = v; })
+        .Property("y", [](Vec3f& t) { return t.y; }, [](Vec3f& t, float v) { t.y = v; })
+        .Property("z", [](Vec3f& t) { return t.z; }, [](Vec3f& t, float v) { t.z = v; })
+        .Method("Norm", [](Vec3f& t) { return t.Norm(); })
+        .End();
     {
         std::print("Benchmarking Vec3f class Norm function call and property set\n");
-    double native_time=0;
-    {
-        Timer timer;
-        Vec3f v;
-        for (int i = 0; i < 1000000; ++i)
+        double native_time = 0;
         {
-            
-            v.x = 1.0f;
-            v.y = 1.0f;
-            v.z = 1.0f;
-            auto norm = v.Norm();
+            Timer timer;
+            Vec3f v;
+            for (int i = 0; i < 1000000; ++i)
+            {
+                v.x = 1.0f;
+                v.y = 1.0f;
+                v.z = 1.0f;
+                auto norm = v.Norm();
+            }
+            native_time = timer.ElapsedSeconds();
         }
-        native_time = timer.ElapsedSeconds();
-    }
-    std::print("Native time: {} seconds\n", native_time);
-    qjs::Context context = qjs::Context::Create(runtime).value();
-    double js_time = 0;
-    {
-        Timer timer;
-        std::string code = R"(
+        std::print("Native time: {} seconds\n", native_time);
+        qjs::Context context = qjs::Context::Create(runtime).value();
+        double js_time = 0;
+        {
+            Timer timer;
+            std::string code = R"(
         try
         {
         let v=new Vec3f();
@@ -281,34 +334,34 @@ void benchmark_class()
             console.log("Caught exception:", e,e.stack);
         }
         )";
-        context.Eval(code.c_str(), code.size(), "<input>");
-        js_time = timer.ElapsedSeconds();
-    }   
-    std::print("JS time: {} seconds\n", js_time);
-    std::print("js/native ratio: {}\n",  js_time/native_time );
+            context.Eval(code.c_str(), code.size(), "<input>");
+            js_time = timer.ElapsedSeconds();
+        }
+        std::print("JS time: {} seconds\n", js_time);
+        std::print("js/native ratio: {}\n", js_time / native_time);
     }
     {
         std::print("Benchmarking Vec3f class Norm function call ,class constructor and property set\n");
-    double native_time=0;
-    {
-        Timer timer;
-        
-        for (int i = 0; i < 1000000; ++i)
+        double native_time = 0;
         {
-            Vec3f v;
-            v.x = 1.0f;
-            v.y = 1.0f;
-            v.z = 1.0f;
-            auto norm = v.Norm();
+            Timer timer;
+
+            for (int i = 0; i < 1000000; ++i)
+            {
+                Vec3f v;
+                v.x = 1.0f;
+                v.y = 1.0f;
+                v.z = 1.0f;
+                auto norm = v.Norm();
+            }
+            native_time = timer.ElapsedSeconds();
         }
-        native_time = timer.ElapsedSeconds();
-    }
-    std::print("Native time: {} seconds\n", native_time);
-    qjs::Context context = qjs::Context::Create(runtime).value();
-    double js_time = 0;
-    {
-        Timer timer;
-        std::string code = R"(
+        std::print("Native time: {} seconds\n", native_time);
+        qjs::Context context = qjs::Context::Create(runtime).value();
+        double js_time = 0;
+        {
+            Timer timer;
+            std::string code = R"(
         try
         {
         for (let i = 0; i < 1000000; ++i) {
@@ -325,25 +378,25 @@ void benchmark_class()
         }
         
         )";
-        context.Eval(code.c_str(), code.size(), "<input>");
-        js_time = timer.ElapsedSeconds();
-    }   
-    std::print("JS time: {} seconds\n", js_time);
-    std::print("js/native ratio: {}\n",  js_time/native_time );
+            context.Eval(code.c_str(), code.size(), "<input>");
+            js_time = timer.ElapsedSeconds();
+        }
+        std::print("JS time: {} seconds\n", js_time);
+        std::print("js/native ratio: {}\n", js_time / native_time);
     }
-    
 }
+
 int main()
 {
     NetContext::Init();
     // test_eval();
     // test_debugger_server();
-    //test_debug();
-    //test_builtin();
-    //test_closure();
-    //test_exception();
-    //test_class();
-    benchmark_class();
+    // test_debug();
+    // test_builtin();
+    // test_closure();
+    // test_exception();
+    test_class();
+    // benchmark_class();
     NetContext::Cleanup();
     return 0;
 }

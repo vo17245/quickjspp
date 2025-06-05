@@ -2,6 +2,7 @@
 #include "closure.h"
 #include "bind.h"
 #include "traits.h"
+#include "function_call.h"
 namespace qjs::detail
 {
 
@@ -23,7 +24,7 @@ inline Closure WrapClosure(const F& func)
     using FuncType = std::decay_t<F>;
     using Traits = LambdaTraits<decltype(&std::remove_reference_t<F>::operator())>;
     using Return = typename Traits::ReturnType;
-    using Args = typename Traits::ArgsTuple;
+    using Args = TupleDecay<typename Traits::ArgsTuple>::type;
     return [func](JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) -> JSValue {
         if (argc != std::tuple_size<Args>::value)
         {

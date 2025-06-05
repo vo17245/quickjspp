@@ -14,6 +14,7 @@
 #include "detail/wrap_closure.h"
 #include "detail/class_wrapper.h"
 #include "quickjspp/detail/traits.h"
+#include "detail/function_call.h"
 #ifdef CONFIG_DEBUGGER
 #ifndef QUICKJSPP_ENABLE_DEBUGGER
 #define QUICKJSPP_ENABLE_DEBUGGER
@@ -86,16 +87,28 @@ public:
      * builder.Method("Contain",[](Triangle& self,const Vec2f& p){return self.Contain(p);});
     */
     
-    
-    
+    template<typename F,typename U ,size_t... I>
+    static inline auto apply_method_args_impl(F& f,T& self,U& args,std::index_sequence<I...>)
+    {
+        return f(self, detail::DereferenceIfRegistered<std::tuple_element_t<I, U>>{}(std::get<I>(args))...);
+    }
+    template<typename F,typename U>
+    static inline auto apply_method_args(F& f,T& self,U& args)
+    {
+        return apply_method_args_impl(f,self,args,
+            std::make_index_sequence<std::tuple_size_v<U>>{});
+    }
+
     template<typename F>
     ClassRegistry& Method(std::string_view name,F&& func)
     {
         using Traits=detail::LambdaTraits<decltype(&std::remove_reference_t<F>::operator())>;
         using ReturnType=Traits::ReturnType;
-        using AllArgsTuple=Traits::ArgsTuple;
-        using Self=typename detail::SliceType<AllArgsTuple, 0, 1>::Type;
-        using Args=typename detail::SliceType<AllArgsTuple, 1, std::tuple_size_v<AllArgsTuple>>::Type;
+        using AllArgsTuple=typename Traits::ArgsTuple;
+        using Self=typename std::tuple_element_t<0, AllArgsTuple>;
+        using Args=typename detail::TupleDecay<typename detail::SliceType<AllArgsTuple, 1, std::tuple_size_v<AllArgsTuple>>::Type>::type;
+       
+        static_assert(std::is_same_v<std::decay_t<Self>, T>, "Method must be a member function of the class T");
         detail::ClassMethod method=[func=std::move(func)](JSContext* ctx,void* c_this/*cpp this*/ ,int argc /*argc*/,JSValue* argv /*argv*/)->JSValue{
             Args args;
             if(!detail::ConvertArgs2<Args>{}(args,argv,ctx))
@@ -103,15 +116,14 @@ public:
                 JS_ThrowTypeError(ctx, "Argument conversion failed");
                 return JS_EXCEPTION; // 转换失败
             }
-            auto methodArgs=std::tuple_cat(std::make_tuple((T&)*static_cast<T*>(c_this)),std::move(args));
             if constexpr (std::is_same_v<ReturnType, void>)
             {
-                std::apply(func, methodArgs);
+                apply_method_args(func, *(T*)c_this,args);
                 return JS_UNDEFINED;
             }
             else
             {
-                auto res = std::apply(func, methodArgs);
+                auto res = apply_method_args(func, *(T*)c_this,args);
                 return detail::ConvertToJsType<ReturnType>::Convert(ctx, res);
             }
         };

@@ -21,4 +21,6 @@ struct Class
 void RegisterClass(Class&& clazz);
 void InitJsClassClass(JSRuntime* rt);
 void EnableCreator(JSContext* ctx);
+bool IsRegisteredClass(JSContext* ctx,JSValue val);
+void* GetOpaque(JSContext* ctx,JSValue val);
 } // namespace qjs::detail
