@@ -222,29 +222,6 @@ struct ConvertArgs
         }
     }
 };
-template <typename F, typename T, typename... Ts>
-struct FunctionCall
-{
-    JSValue operator()(JSContext* ctx, JSValueConst this_val, int argc,
-                       JSValueConst* argv, F f)
-    {
-        if (argc != sizeof...(Ts))
-        {
-            JS_ThrowTypeError(ctx, "Expected %d arguments, got %d", sizeof...(Ts), argc);
-            return JS_EXCEPTION;
-        }
-        std::tuple<Ts...> args;
-        if constexpr (sizeof...(Ts) > 0)
-        {
-            if (!ConvertArgs(ctx, args, argv))
-            {
-                JS_ThrowTypeError(ctx, "Argument conversion failed");
-                return JS_EXCEPTION; // 转换失败
-            }
-        }
-        auto res = std::apply(f, args);
-        return ConvertToJsType<T>{}(res);
-    }
-};
+
 
 } // namespace qjs::detail
