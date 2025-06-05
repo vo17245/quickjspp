@@ -200,21 +200,20 @@ void test_class()
     qjs::ClassRegistry<Vec3f> registry;
 
     registry.Begin("Vec3f")
-    .Property("X", [](Vec3f& t){return t.x;},[](Vec3f& t,float v){t.x=v;})
-    .Property("Y", [](Vec3f& t){return t.y;},[](Vec3f& t,float v){t.y=v;})
-    .Property("Z", [](Vec3f& t){return t.z;},[](Vec3f& t,float v){t.z=v;})
+    .Property("x", [](Vec3f& t){return t.x;},[](Vec3f& t,float v){t.x=v;})
+    .Property("y", [](Vec3f& t){return t.y;},[](Vec3f& t,float v){t.y=v;})
+    .Property("z", [](Vec3f& t){return t.z;},[](Vec3f& t,float v){t.z=v;})
     .Method("Norm", [](Vec3f& t) { return t.Norm(); })
     .End();
     qjs::Context context = qjs::Context::Create(runtime).value();
    
     std::string code = R"(
     try{
-    let v=CreateVec3f();
-    v.SetX(1.0);
-    v.SetY(1.0);
-    v.SetZ(1.0);
-    console.log("Vec3f X:", v.GetX());
-    console.log("Norm: ", v.Norm());
+    let v=new Vec3f();
+    v.x=1.0;
+    v.y=2.0;
+    v.z=3.0;
+    console.log("call Norm:",v.Norm());
     }
     catch(e){
         console.log("Caught exception:", e,e.stack);
@@ -238,9 +237,9 @@ void benchmark_class()
     qjs::ClassRegistry<Vec3f> registry;
 
     registry.Begin("Vec3f")
-    .Property("X", [](Vec3f& t){return t.x;},[](Vec3f& t,float v){t.x=v;})
-    .Property("Y", [](Vec3f& t){return t.y;},[](Vec3f& t,float v){t.y=v;})
-    .Property("Z", [](Vec3f& t){return t.z;},[](Vec3f& t,float v){t.z=v;})
+    .Property("x", [](Vec3f& t){return t.x;},[](Vec3f& t,float v){t.x=v;})
+    .Property("y", [](Vec3f& t){return t.y;},[](Vec3f& t,float v){t.y=v;})
+    .Property("z", [](Vec3f& t){return t.z;},[](Vec3f& t,float v){t.z=v;})
     .Method("Norm", [](Vec3f& t) { return t.Norm(); })
     .End();
     {
@@ -265,13 +264,21 @@ void benchmark_class()
     {
         Timer timer;
         std::string code = R"(
-        let v=CreateVec3f();
+        try
+        {
+        let v=new Vec3f();
         for (let i = 0; i < 1000000; ++i) {
             
-            v.SetX(1.0);
-            v.SetY(1.0);
-            v.SetZ(1.0);
+            v.x=1.0;
+            v.y=1.0;
+            v.z=1.0;
             let norm = v.Norm();
+        }
+        }
+
+        catch(e)
+        {
+            console.log("Caught exception:", e,e.stack);
         }
         )";
         context.Eval(code.c_str(), code.size(), "<input>");
@@ -286,7 +293,7 @@ void benchmark_class()
     {
         Timer timer;
         
-        for (int i = 0; i < 1000; ++i)
+        for (int i = 0; i < 1000000; ++i)
         {
             Vec3f v;
             v.x = 1.0f;
@@ -302,14 +309,21 @@ void benchmark_class()
     {
         Timer timer;
         std::string code = R"(
-        
-        for (let i = 0; i < 1000; ++i) {
-            let v=CreateVec3f();
-            v.SetX(1.0);
-            v.SetY(1.0);
-            v.SetZ(1.0);
+        try
+        {
+        for (let i = 0; i < 1000000; ++i) {
+            let v=new Vec3f();
+            v.x=1.0;
+            v.y=1.0;
+            v.=1.0;
             let norm = v.Norm();
         }
+        }
+        catch(e)
+        {
+            console.log("Caught exception:", e,e.stack);
+        }
+        
         )";
         context.Eval(code.c_str(), code.size(), "<input>");
         js_time = timer.ElapsedSeconds();
