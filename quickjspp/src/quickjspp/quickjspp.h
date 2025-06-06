@@ -231,9 +231,27 @@ public:
         return m_Value;
     }
     //@note value的所有权会被JS_SetPropertyStr接管
-    void SetPropertyStr(const char* name, Value& value)
+    void SetPropertyStr(const char* name, Value&& value)
     {
         JS_SetPropertyStr(m_Context, m_Value, name, value.Unwrap());
+    }
+    void SetProperty(const char* name,Value&& value)
+    {
+        JS_SetProperty(m_Context, m_Value, JS_NewString(m_Context, name), value.Unwrap());
+    }
+    Value GetProperty(const char* name)
+    {
+        JSValue prop = JS_GetPropertyStr(m_Context, m_Value, name);
+        if (JS_IsException(prop))
+        {
+            JS_FreeValue(m_Context, prop);
+            return Value(JS_UNDEFINED, m_Context); // 返回一个未定义的值
+        }
+        return Value(prop, m_Context);
+    }
+    bool IsUndefined()const 
+    {
+        return JS_IsUndefined(m_Value);
     }
     JSValue Unwrap()
     {
@@ -241,7 +259,42 @@ public:
         m_Value = JS_UNDEFINED; // Prevent double free
         return res;
     }
-
+    template<typename... Ts>
+    Value Call(Ts&&... args)
+    {
+        assert(JS_IsFunction(m_Context, m_Value));
+        JSValue argv[] = {detail::ConvertToJsType<std::decay_t<Ts>>::Convert(m_Context, std::forward<Ts>(args))...};
+        JSValue result = JS_Call(m_Context, m_Value, JS_UNDEFINED, sizeof...(Ts), argv);
+        return Value(result, m_Context);
+    }
+    template<typename... Ts>
+    Value CallWithThis(Value& this_val, Ts&&... args)
+    {
+        assert(JS_IsFunction(m_Context, m_Value));
+        JSValue argv[] = {detail::ConvertToJsType<std::decay_t<Ts>>::Convert(m_Context, std::forward<Ts>(args))...};
+        JSValue result = JS_Call(m_Context, m_Value, this_val.GetRaw(), sizeof...(Ts), argv);
+        return Value(result, m_Context);
+    }
+    operator JSValue() const
+    {
+        return m_Value;
+    }
+    template<typename... Ts>
+    Value CallMethod(const char* method_name, Ts&&... args)
+    {
+        // 获取方法
+        JSValue method = JS_GetPropertyStr(m_Context, m_Value, method_name);
+        if (JS_IsException(method))
+        {
+            JS_FreeValue(m_Context, method);
+            return Value(JS_UNDEFINED, m_Context); // 返回一个未定义的值
+        }
+        // 调用方法
+        JSValue argv[] = {detail::ConvertToJsType<std::decay_t<Ts>>::Convert(m_Context, std::forward<Ts>(args))...};
+        JSValue result = JS_Call(m_Context, method, m_Value, sizeof...(Ts), argv);
+        JS_FreeValue(m_Context, method); // 释放方法引用
+        return Value(result, m_Context);
+    }
 private:
     JSValue m_Value = JS_UNDEFINED;
     JSContext* m_Context = nullptr;
@@ -377,6 +430,54 @@ public:
         auto c = detail::WrapClosure(closure);
         return CreateClosureNoWrap(std::move(c));
     }
+    template<typename T>
+    Value Create(const T& value)
+    {
+        static_assert(sizeof(T)==0, "Create function not implemented for this type");
+    }
+    template<>
+    Value Create<std::string>(const std::string& str)
+    {
+        JSValue res = JS_NewString(m_Context, str.c_str());
+        return Value(res, m_Context);
+    }
+    template<>
+    Value Create<int32_t>(const int32_t& value)
+    {
+        JSValue res = JS_NewInt32(m_Context, value);
+        return Value(res, m_Context);
+    }
+    template<>
+    Value Create<double>(const double& value)
+    {
+        JSValue res = JS_NewFloat64(m_Context, value);
+        return Value(res, m_Context);
+    }
+    template<>
+    Value Create<bool>(const bool& value)
+    {
+        JSValue res = JS_NewBool(m_Context, value);
+        return Value(res, m_Context);
+    }
+    template<>
+    Value Create<float>(const float& value)
+    {
+        JSValue res = JS_NewFloat64(m_Context, static_cast<double>(value));
+        return Value(res, m_Context);
+    }
+    template<>
+    Value Create<uint32_t>(const uint32_t& value)
+    {
+        JSValue res = JS_NewUint32(m_Context, value);
+        return Value(res, m_Context);
+    }
+    template<>
+    Value Create<int64_t>(const int64_t& value)
+    {
+        JSValue res = JS_NewInt64(m_Context, static_cast<int64_t>(value));
+        return Value(res, m_Context);
+    }
+   
 
 #ifdef QUICKJSPP_ENABLE_DEBUGGER
     struct BreakPoint

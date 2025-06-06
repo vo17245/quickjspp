@@ -12,12 +12,15 @@ struct JsClass
 {
     uint32_t classIndex;
     void* handle;
+    // 是否拥有 handle 的所有权,如果为true,对象由 JS GC 管理，析构时会调用 destructor
+    // 如果为 false, 则 handle 由 C++ 管理，js gc析构时不会调用 destructor
+    bool owned = true; 
 };
 // 析构函数：JS GC 调用
 static void JsClass_Finalizer(JSRuntime* rt, JSValue val)
 {
     JsClass* obj = (JsClass*)JS_GetOpaque(val, g_JsClassClassId);
-    if (obj->handle)
+    if (obj->handle&&obj->owned)
     {
         auto& clazz = g_RegisteredClasses[obj->classIndex];
         if (clazz.destructor)
@@ -41,9 +44,10 @@ void InitJsClassClass(JSRuntime* rt)
     };
     JS_NewClass(rt, g_JsClassClassId, &def);
 }
-void RegisterClass(Class&& clazz)
+uint32_t RegisterClass(Class&& clazz)
 {
     g_RegisteredClasses.push_back(std::move(clazz));
+    return static_cast<uint32_t>(g_RegisteredClasses.size() - 1);
 }
 JSValue CreateJsClass(JSContext* ctx, JsClass* clazz)
 {
@@ -150,6 +154,71 @@ void EnableCreator(JSContext* ctx)
         }
         // store class index in prototype
         JS_SetPropertyStr(ctx, proto, "__c_class_index", JS_NewUint32(ctx, classIndex));
+        // set opaque getter setter
+        {
+            Closure* closure_get_opaque = new Closure([](JSContext* context,
+                                      JSValueConst /*this*/ this_val,
+                                      int /*argc*/ argc,
+                                      JSValueConst* /*argv*/ argv)->JSValue{
+                JsClass* obj = (JsClass*)JS_GetOpaque(this_val, g_JsClassClassId);
+                return JS_NewInt64(context, (int64_t)obj->handle);
+            });
+            JSValue js_get_opaque = CreateClosure(ctx, closure_get_opaque);
+            Closure* closure_set_opaque = new Closure([](JSContext* context,
+                                      JSValueConst /*this*/ this_val,
+                                      int /*argc*/ argc,
+                                      JSValueConst* /*argv*/ argv)->JSValue{
+                if(argc!=1)
+                {
+                    return JS_ThrowTypeError(context, "setOpaque must set one param");
+                }
+                JsClass* obj = (JsClass*)JS_GetOpaque(this_val, g_JsClassClassId);
+                int64_t handle;
+                if (JS_ToInt64(context, &handle, argv[0]) < 0)
+                {
+                    return JS_EXCEPTION; // 转换失败
+                }
+                obj->handle = reinterpret_cast<void*>(handle);
+                return JS_UNDEFINED;
+            });
+            JSValue js_set_opaque = CreateClosure(ctx, closure_set_opaque);
+            JSAtom opaque_atom = JS_NewAtom(ctx, "__c_opaque");
+            JS_DefineProperty(ctx, proto, opaque_atom, JS_UNDEFINED, js_get_opaque, js_set_opaque, JS_PROP_HAS_GET | JS_PROP_HAS_SET | JS_PROP_ENUMERABLE);
+            JS_FreeAtom(ctx, opaque_atom);
+            JS_FreeValue(ctx, js_get_opaque);
+            JS_FreeValue(ctx, js_set_opaque);
+        }
+        // set owned getter setter
+        {
+            Closure* closure_get_owned = new Closure([](JSContext* context,
+                                      JSValueConst /*this*/ this_val,
+                                      int /*argc*/ argc,
+                                      JSValueConst* /*argv*/ argv)->JSValue{
+                JsClass* obj = (JsClass*)JS_GetOpaque(this_val, g_JsClassClassId);
+                return JS_NewBool(context, obj->owned);
+            });
+            JSValue js_get_owned = CreateClosure(ctx, closure_get_owned);
+            Closure* closure_set_owned = new Closure([](JSContext* context,
+                                      JSValueConst /*this*/ this_val,
+                                      int /*argc*/ argc,
+                                      JSValueConst* /*argv*/ argv)->JSValue{
+                if(argc!=1)
+                {
+                    return JS_ThrowTypeError(context, "setOwned must set one param");
+                }
+                JsClass* obj = (JsClass*)JS_GetOpaque(this_val, g_JsClassClassId);
+                bool owned=JS_ToBool(context, argv[0]);
+                obj->owned = owned; // 设置 owned 属性
+                return JS_UNDEFINED; // 返回 undefined
+            });
+            JSValue js_set_owned = CreateClosure(ctx, closure_set_owned);
+            JSAtom owned_atom = JS_NewAtom(ctx, "__c_owned");
+            JS_DefineProperty(ctx, proto, owned_atom, JS_UNDEFINED, js_get_owned, js_set_owned, JS_PROP_HAS_GET | JS_PROP_HAS_SET | JS_PROP_ENUMERABLE);
+            JS_FreeAtom(ctx, owned_atom);
+            JS_FreeValue(ctx, js_get_owned);
+            JS_FreeValue(ctx, js_set_owned);
+        }
+
         JS_SetConstructor(ctx, js_ctor, proto);
         JS_SetPropertyStr(ctx, js_ctor, "prototype", proto);
         //JS_FreeValue(ctx, proto);
@@ -180,4 +249,17 @@ void* GetOpaque(JSContext* ctx,JSValue val)
     }
     return obj->handle;
 }
+uint32_t GetClassIndex(const char* className)
+{
+    for (size_t i = 0; i < g_RegisteredClasses.size(); ++i)
+    {
+        if (g_RegisteredClasses[i].className == className)
+        {
+            return static_cast<uint32_t>(i);
+        }
+    }
+    assert(false && "Class not found");
+    return UINT32_MAX; // 如果没有找到，返回一个无效的索引
+}
+
 } // namespace qjs::detail

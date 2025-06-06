@@ -18,9 +18,15 @@ struct Class
     std::string className;                                  // 类名
     std::function<void(void*)> destructor;                                      // 析构函数
 };
-void RegisterClass(Class&& clazz);
+/**
+ * @return class index
+*/
+uint32_t RegisterClass(Class&& clazz);
 void InitJsClassClass(JSRuntime* rt);
 void EnableCreator(JSContext* ctx);
 bool IsRegisteredClass(JSContext* ctx,JSValue val);
 void* GetOpaque(JSContext* ctx,JSValue val);
+uint32_t GetClassIndex(const char* className);
+JSValue CreateObject();
+
 } // namespace qjs::detail

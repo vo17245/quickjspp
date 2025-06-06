@@ -54,7 +54,7 @@ void test_eval()
     // 创建 JS 函数对象，3 表示最多参数个数（任意写）
     qjs::Value func = context.CreateFunction(js_print, "print", 1);
     auto global_obj = context.GetGlobalObject();
-    global_obj.SetPropertyStr("print", func);
+    global_obj.SetPropertyStr("print", std::move(func));
     JS_SetBreakpointHandler(context.GetRaw(), debug_handler);
     JS_SetDebuggerMode(context.GetRaw(), 1);
     std::string code = R"(
@@ -89,10 +89,10 @@ void test_debug()
     qjs::Context context = qjs::Context::Create(runtime).value();
     auto global_obj = context.GetGlobalObject();
     qjs::Value func = context.CreateFunction(js_print, "print", 1);
-    global_obj.SetPropertyStr("print", func);
+    global_obj.SetPropertyStr("print", std::move(func));
 
     qjs::Value sleep_func = context.CreateFunction(js_sleep, "sleep", 1);
-    global_obj.SetPropertyStr("sleep", sleep_func);
+    global_obj.SetPropertyStr("sleep", std::move(sleep_func));
     context.SetDebuggerMode(1);
     std::string code = R"(let a=0;
     while(true){
@@ -112,7 +112,7 @@ void test_builtin()
     // 创建 JS 函数对象，3 表示最多参数个数（任意写）
     qjs::Value func = context.CreateFunction(js_print, "print", 1);
     auto global_obj = context.GetGlobalObject();
-    global_obj.SetPropertyStr("print", func);
+    global_obj.SetPropertyStr("print", std::move(func));
 
     std::string code = R"(
     let a = 1;
@@ -139,13 +139,13 @@ void test_closure()
             std::println("Closure called with a={}", a);
             return JS_UNDEFINED;
         });
-    context.GetGlobalObject().SetPropertyStr("test", closure);
+    context.GetGlobalObject().SetPropertyStr("test", std::move(closure));
     context.Eval("test()");
     qjs::Value closure1 = context.CreateClosure([a](uint32_t x, const std::string& msg) {
         std::println("Closure1 called with a={} x={} and msg={}", a, x, msg);
         return x + a;
     });
-    context.GetGlobalObject().SetPropertyStr("test1", closure1);
+    context.GetGlobalObject().SetPropertyStr("test1",std::move( closure1));
     qjs::Value res = context.Eval("let res=test1(5,'hello');print(res);");
 }
 void test_exception()
@@ -159,7 +159,7 @@ void test_exception()
         std::print("test closure called\n");
         return qjs::Exception{"This is a test exception"};
     });
-    global_obj.SetPropertyStr("test", test);
+    global_obj.SetPropertyStr("test", std::move(test));
     std::string code = R"(
 
 Error.prototype.toJSON = function () {
@@ -267,6 +267,21 @@ std::string code = R"(
     }
     )";
     context.Eval(code.c_str(), code.size(), "<input>");
+    }
+    {
+        std::string code = R"(
+        let v1=new Vec3f();
+        let v2=new Vec3f();
+        v1.x=1.0;
+        v1.y=2.0;
+        v1.z=3.0;
+        v2.x=4.0;
+        v2.y=5.0;
+        v2.z=6.0;
+        console.log("v1:",v1.x,v1.y,v1.z);
+        console.log("v2:",v2.x,v2.y,v2.z);
+    )";
+context.Eval(code.c_str(), code.size(), "<input>");
     }
     
 }
@@ -403,7 +418,7 @@ void test_closure2()
     auto closure=context.CreateClosure([](Vec3f& v){
         std::println("x {} y {} z {}",v.x, v.y, v.z);
     });
-    context.GetGlobalObject().SetPropertyStr("PrintVec3f", closure);
+    context.GetGlobalObject().SetPropertyStr("PrintVec3f", std::move(closure));
     std::string code = R"(
     try{
     let v=new Vec3f();
@@ -418,6 +433,49 @@ void test_closure2()
     )";
     context.Eval(code.c_str(), code.size(), "<input>");
 }
+void test_js_function_call()
+{
+    qjs::ClassRegistry<Vec3f> registry;
+    registry.Begin("Vec3f")
+        .Property("x", [](Vec3f& t) { return t.x; }, [](Vec3f& t, float v) { t.x = v; })
+        .Property("y", [](Vec3f& t) { return t.y; }, [](Vec3f& t, float v) { t.y = v; })
+        .Property("z", [](Vec3f& t) { return t.z; }, [](Vec3f& t, float v) { t.z = v; })
+        .Method("Norm", [](Vec3f& t) { return t.Norm(); })
+        .End();
+    qjs::Runtime runtime=qjs::Runtime::Create().value();
+    qjs::Context context=qjs::Context::Create(runtime).value();
+    auto global_obj = context.GetGlobalObject();
+    std::string code=R"(
+    function print(s)
+    {
+        console.log(s);
+    }
+    function add(a, b)
+    {
+        return a + b;
+    }
+    function printVec3f(v)
+    {
+        console.log("x: " + v.x + ", y: " + v.y + ", z: " + v.z);
+    }
+    )";
+    context.Eval(code.c_str(), code.size(), "<input>");
+    // 获取函数对象
+    auto print=global_obj.GetProperty("print");
+    print.Call(std::string("string from c++"));
+    auto add=global_obj.GetProperty("add");
+    auto res=add.Call(1, 2);
+    std::println("add result: {}",res.Convert<int>());
+    
+    Vec3f v;
+    v.x = 1.0f;
+    v.y = 2.0f;
+    v.z = 3.0f;
+    auto v_ref=context.Eval(R"(
+Object.create(Vec3f.prototype);
+        )");
+
+}
 int main()
 {
     NetContext::Init();
@@ -429,7 +487,8 @@ int main()
     // test_exception();
     //test_class();
     // benchmark_class();
-    test_closure2();
+    //test_closure2();
+    test_js_function_call();
     NetContext::Cleanup();
     return 0;
 }
